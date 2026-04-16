@@ -22,6 +22,7 @@ return {
       window = {
         mappings = {
           ['<C-b>'] = 'close_window',
+          ['<LeftRelease>'] = 'open',
         },
       },
     },
