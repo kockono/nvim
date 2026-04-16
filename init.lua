@@ -172,6 +172,25 @@ vim.o.confirm = true
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
+-- Diagnostics navigation
+local function workspace_diagnostic_next()
+  vim.diagnostic.setqflist { open = false }
+  pcall(vim.cmd.cnext)
+end
+
+local function workspace_diagnostic_prev()
+  vim.diagnostic.setqflist { open = false }
+  pcall(vim.cmd.cprev)
+end
+
+-- F8 / Shift+F8 -> workspace diagnostics
+vim.keymap.set('n', '<F8>', workspace_diagnostic_next, { desc = 'Next workspace diagnostic' })
+vim.keymap.set('n', '<S-F8>', workspace_diagnostic_prev, { desc = 'Previous workspace diagnostic' })
+
+-- Alt+F8 / Alt+Shift+F8 -> current buffer diagnostics
+vim.keymap.set('n', '<A-F8>', function() vim.diagnostic.jump { count = 1, float = true } end, { desc = 'Next buffer diagnostic' })
+vim.keymap.set('n', '<A-S-F8>', function() vim.diagnostic.jump { count = -1, float = true } end, { desc = 'Previous buffer diagnostic' })
+
 -- Diagnostic Config & Keymaps
 -- See :help vim.diagnostic.Opts
 vim.diagnostic.config {
@@ -215,6 +234,18 @@ vim.keymap.set('n', '<C-h>', '<C-w><C-h>', { desc = 'Move focus to the left wind
 vim.keymap.set('n', '<C-l>', '<C-w><C-l>', { desc = 'Move focus to the right window' })
 vim.keymap.set('n', '<C-j>', '<C-w><C-j>', { desc = 'Move focus to the lower window' })
 vim.keymap.set('n', '<C-k>', '<C-w><C-k>', { desc = 'Move focus to the upper window' })
+
+-- Stable Telescope shortcuts
+vim.keymap.set('n', '<C-p>', function() require('telescope.builtin').find_files() end, { desc = 'Find Files' })
+vim.keymap.set('n', '<leader>pf', function() require('telescope.builtin').find_files() end, { desc = '[P]icker [F]iles' })
+
+-- Theme switching
+vim.keymap.set('n', '<leader>tc', function()
+  vim.cmd.colorscheme 'cyberdream'
+end, { desc = '[T]heme [C]yberdream' })
+vim.keymap.set('n', '<leader>tm', function()
+  vim.cmd.colorscheme 'monokai'
+end, { desc = '[T]heme [M]onokai' })
 
 -- NOTE: Some terminals have colliding keymaps or are not able to send distinct keycodes
 -- vim.keymap.set("n", "<C-S-h>", "<C-w>H", { desc = "Move window to the left" })
@@ -417,6 +448,46 @@ require('lazy').setup({
 
       -- See `:help telescope.builtin`
       local builtin = require 'telescope.builtin'
+
+      local function modified_buffers_picker()
+        local modified_buffers = vim.tbl_filter(function(bufnr)
+          return vim.api.nvim_buf_is_valid(bufnr) and vim.bo[bufnr].buflisted and vim.bo[bufnr].modified
+        end, vim.api.nvim_list_bufs())
+
+        if vim.tbl_isempty(modified_buffers) then
+          vim.notify('No hay buffers modificados', vim.log.levels.INFO)
+          return
+        end
+
+        local pickers = require 'telescope.pickers'
+        local finders = require 'telescope.finders'
+        local conf = require('telescope.config').values
+        local make_entry = require 'telescope.make_entry'
+        local actions = require 'telescope.actions'
+        local action_state = require 'telescope.actions.state'
+
+        pickers
+          .new({}, {
+            prompt_title = 'Buffers modificados',
+            finder = finders.new_table {
+              results = modified_buffers,
+              entry_maker = make_entry.gen_from_buffer {},
+            },
+            sorter = conf.generic_sorter {},
+            previewer = false,
+            attach_mappings = function(prompt_bufnr)
+              actions.select_default:replace(function()
+                actions.close(prompt_bufnr)
+                local selection = action_state.get_selected_entry()
+                if selection and selection.bufnr then
+                  vim.api.nvim_set_current_buf(selection.bufnr)
+                end
+              end)
+              return true
+            end,
+          })
+          :find()
+      end
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
       vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
@@ -425,10 +496,12 @@ require('lazy').setup({
       vim.keymap.set({ 'n', 'v' }, '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
       vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
-      vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
-      vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
+      vim.keymap.set('n', '<leader>sR', builtin.resume, { desc = '[S]earch [R]esume' })
+      vim.keymap.set('n', '<leader>sr', builtin.oldfiles, { desc = '[S]earch [R]ecent files' })
+      vim.keymap.set('n', '<C-A-p>', builtin.oldfiles, { desc = 'Recent Files' })
       vim.keymap.set('n', '<leader>sc', builtin.commands, { desc = '[S]earch [C]ommands' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
+      vim.keymap.set('n', '<C-A-m>', modified_buffers_picker, { desc = 'Modified Buffers' })
 
       -- This runs on LSP attach per buffer (see main LSP attach function in 'neovim/nvim-lspconfig' config for more info,
       -- it is better explained there). This allows easily switching between pickers if you prefer using something else!
@@ -622,6 +695,9 @@ require('lazy').setup({
         -- HTML
         html = {},
 
+        -- Angular templates / TypeScript
+        angularls = {},
+
         -- CSS / SCSS / Less
         cssls = {},
 
@@ -672,6 +748,7 @@ require('lazy').setup({
         'gopls',
         'ts_ls',
         'html',
+        'angularls',
         'cssls',
         'jsonls',
         'stylua',
@@ -940,7 +1017,7 @@ require('lazy').setup({
   -- require 'kickstart.plugins.autopairs',
   require 'kickstart.plugins.neo-tree',
   require 'kickstart.plugins.lazygit',
-  -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommended keymaps
+  require 'kickstart.plugins.gitsigns', -- adds gitsigns recommended keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
